@@ -99,12 +99,7 @@ func main() {
 	                         chain to the specified file
 	*/
 
-	// exit early if the command is not found
-	_, err := exec.LookPath(cmd)
-	//	if err != nil {
-	//		fmt.Fprintf(os.Stderr, "%v not found in PATH or not executable. Exiting.\n", cmd)
-	//		os.Exit(2)
-	//	}
+	var err error
 
 	// take care of maximum running time
 	if Config.maxtime > 0 {
