@@ -210,7 +210,7 @@ func execute_job(sem chan int) {
 	var status string
 	var failed bool
 	if cmdErr != nil {
-		//	fmt.Fprintln(os.Stderr, cmdErr)
+		fmt.Fprintln(os.Stderr, cmdErr)
 		status = "failed"
 		failed = true
 	} else {
