@@ -18,8 +18,10 @@ import (
 
 type (
 	user struct {
-		Identity string
-		Password string
+		Identity   string
+		Password   string
+		MacAddress string
+		IpAddress  string
 	}
 
 	confTmp struct {
@@ -37,15 +39,16 @@ type (
 	}
 
 	rl_config struct {
-		workers uint64
-		csv     string
-		dir     string
-		log     string
-		MACs    uint64
-		maxreq  uint64
-		maxtime uint64
-		clean   bool
-		conf    string
+		workers  uint64
+		csv      string
+		dir      string
+		log      string
+		MACs     uint64
+		maxreq   uint64
+		maxtime  uint64
+		clean    bool
+		conf     string
+		job_type string
 	}
 )
 
@@ -54,10 +57,9 @@ var (
 	logfile  *os.File
 	lock     = make(chan int, 1)
 	reqstats rl_stats
-	users    []string
+	users    []user
 	Config   rl_config
 	cliArgs  []string
-	usersmac = make(map[string]string)
 )
 
 const (
@@ -99,10 +101,10 @@ func main() {
 
 	// exit early if the command is not found
 	_, err := exec.LookPath(cmd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v not found in PATH or not executable. Exiting.\n", cmd)
-		os.Exit(2)
-	}
+	//	if err != nil {
+	//		fmt.Fprintf(os.Stderr, "%v not found in PATH or not executable. Exiting.\n", cmd)
+	//		os.Exit(2)
+	//	}
 
 	// take care of maximum running time
 	if Config.maxtime > 0 {
@@ -171,10 +173,9 @@ func main() {
 	}
 
 	for _, record := range records {
-		username, pass := record[0], record[1]
-		usersmac[username] = record[2]
-		users = append(users, username)
-		nextUser := user{username, pass}
+		username, pass, mac_address, ip_address := record[0], record[1], record[2], record[3]
+		nextUser := user{username, pass, mac_address, ip_address}
+		users = append(users, nextUser)
 
 		f, err := os.Create(username + confSuffix)
 		check(err)
@@ -194,24 +195,21 @@ func main() {
 			printStats()
 			os.Exit(0)
 		}
-		go authenticate(sem)
+		go execute_job(sem)
 	}
 }
 
-func authenticate(sem chan int) {
+func execute_job(sem chan int) {
 	user := users[mrand.Intn(len(users))] // pick a random user
-	cliArgs = append(cliArgs, "-c"+user+".rl_conf")
 
-	mac := usersmac[user]
-	if mac == "" {
-		i := mrand.Intn(len(macs))
-		mac = macs[i]
-	}
-	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", mac))
-
-	_ = "breakpoint"
 	before := time.Now()
-	cmdErr := exec.Command(cmd, cliArgs...).Run()
+	var cmdErr error
+	switch Config.job_type {
+	case "eapol_test":
+		cmdErr = _eapol_test(user, cliArgs)
+	case "dhcp":
+		cmdErr = _dhcp(user, cliArgs)
+	}
 	diff := time.Since(before).Seconds()
 
 	var status string
@@ -234,12 +232,34 @@ func authenticate(sem chan int) {
 	}
 	reqstats.times = append(reqstats.times, diff)
 
-	result := fmt.Sprintf("[%v / %v] %v authentication. Duration %v s\n", user, mac, status, diff)
+	result := fmt.Sprintf("[%v / %v] %v. Duration %v s\n", user.Identity, user.MacAddress, status, diff)
 	io.WriteString(logfile, result)
 
 	<-lock //  unlock the shared data
 
 	<-sem // clear the semaphore
+}
+
+func _dhcp(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "--mac="+user.MacAddress)
+	cliArgs = append(cliArgs, "--ip="+user.IpAddress)
+	cliArgs = append(cliArgs, "--hostname=test-hostname")
+	cliArgs = append(cliArgs, "--dhcp-fingerprint=1,2,3,4")
+	cliArgs = append(cliArgs, "--dhcp-vendor=test")
+
+	cmdErr := exec.Command("/root/pftester/send_dhcp.pl", cliArgs...).Run()
+
+	return cmdErr
+}
+
+func _eapol_test(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "-c"+user.Identity+".rl_conf")
+
+	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
+
+	cmdErr := exec.Command(cmd, cliArgs...).Run()
+
+	return cmdErr
 }
 
 // generate a fake MAC address
@@ -289,7 +309,7 @@ func printStats() {
 func cleanUp() {
 	if Config.clean {
 		for _, user := range users {
-			os.Remove(Config.dir + "/" + user + confSuffix)
+			os.Remove(Config.dir + "/" + user.Identity + confSuffix)
 		}
 	}
 }
@@ -305,6 +325,7 @@ func setConfig() {
 	countPtr := flag.Uint64("r", 0, "run a maximum of 'r' requests before exiting (defaults to infinity)")
 	timePtr := flag.Int("t", 0, "run for a maximum of 't' seconds before exiting (defaults to infinity)")
 	cleanPtr := flag.Bool("c", false, "Cleanup. Deletes all configuration files at exit.")
+	jobTypePtr := flag.String("type", "eapol_test", "Sets the type of the job")
 	flag.Parse()
 	cliArgs = flag.Args()
 
@@ -322,5 +343,6 @@ func setConfig() {
 	Config.maxreq = *countPtr
 	Config.maxtime = uint64(*timePtr)
 	Config.clean = *cleanPtr
+	Config.job_type = *jobTypePtr
 
 }
