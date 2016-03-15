@@ -204,6 +204,12 @@ func execute_job(sem chan int) {
 		cmdErr = _eapol_test(user, cliArgs)
 	case "dhcp":
 		cmdErr = _dhcp(user, cliArgs)
+	case "acct":
+		cmdErr = _acct(user, cliArgs)
+	case "http":
+		cmdErr = _http(user, cliArgs)
+	default:
+		panic("Don't know that type...")
 	}
 	diff := time.Since(before).Seconds()
 
@@ -233,6 +239,18 @@ func execute_job(sem chan int) {
 	<-lock //  unlock the shared data
 
 	<-sem // clear the semaphore
+}
+
+func _http(user user, cliArgs []string) error {
+	cmdErr := exec.Command("/usr/bin/curl", cliArgs...).Run()
+	return cmdErr
+}
+
+func _acct(user user, cliArgs []string) error {
+	//	/root/pftester/acct.pl --secret=radius --server=172.20.20.109 --mac=00:11:22:33:44:55
+	cliArgs = append(cliArgs, "--mac="+user.MacAddress)
+	cmdErr := exec.Command("/root/pftester/acct.pl", cliArgs...).Run()
+	return cmdErr
 }
 
 func _dhcp(user user, cliArgs []string) error {
