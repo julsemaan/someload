@@ -18,10 +18,12 @@ import (
 
 type (
 	user struct {
-		Identity   string
-		Password   string
-		MacAddress string
-		IpAddress  string
+		Identity        string
+		Password        string
+		MacAddress      string
+		IpAddress       string
+		DhcpVendor      string
+		DhcpFingerprint string
 	}
 
 	confTmp struct {
@@ -152,6 +154,7 @@ func main() {
 	file, err := os.Open(Config.csv)
 	check(err)
 	r := csv.NewReader(io.Reader(file))
+	r.Comma = '|'
 	records, err := r.ReadAll()
 	check(err)
 	file.Close()
@@ -168,11 +171,10 @@ func main() {
 	}
 
 	for _, record := range records {
-		username, pass, mac_address, ip_address := record[0], record[1], record[2], record[3]
-		nextUser := user{username, pass, mac_address, ip_address}
+		nextUser := user{record[0], record[1], record[2], record[3], record[4], record[5]}
 		users = append(users, nextUser)
 
-		f, err := os.Create(username + confSuffix)
+		f, err := os.Create(nextUser.Identity + confSuffix)
 		check(err)
 		err = tmpl.Execute(f, nextUser)
 		if err != nil {
