@@ -22,8 +22,8 @@ type (
 		Password        string
 		MacAddress      string
 		IpAddress       string
-		DhcpVendor      string
 		DhcpFingerprint string
+		DhcpVendor      string
 	}
 
 	confTmp struct {
@@ -65,7 +65,10 @@ var (
 )
 
 const (
-	cmd        string = "eapol_test"
+	eapol_cmd  string = "eapol_test"
+	acct_cmd   string = "/root/pftester/acct.pl"
+	dhcp_cmd   string = "/root/pftester/send_dhcp.pl"
+	http_cmd   string = "/usr/bin/curl"
 	confSuffix        = ".rl_conf" // appended to all configfiles created
 )
 
@@ -172,6 +175,12 @@ func main() {
 
 	for _, record := range records {
 		nextUser := user{record[0], record[1], record[2], record[3], record[4], record[5]}
+		if nextUser.DhcpFingerprint == "" {
+			nextUser.DhcpFingerprint = "NULL"
+		}
+		if nextUser.DhcpVendor == "" {
+			nextUser.DhcpVendor = "NULL"
+		}
 		users = append(users, nextUser)
 
 		f, err := os.Create(nextUser.Identity + confSuffix)
@@ -244,14 +253,14 @@ func execute_job(sem chan int) {
 }
 
 func _http(user user, cliArgs []string) error {
-	cmdErr := exec.Command("/usr/bin/curl", cliArgs...).Run()
+	cmdErr := exec.Command(http_cmd, cliArgs...).Run()
 	return cmdErr
 }
 
 func _acct(user user, cliArgs []string) error {
 	//	/root/pftester/acct.pl --secret=radius --server=172.20.20.109 --mac=00:11:22:33:44:55
 	cliArgs = append(cliArgs, "--mac="+user.MacAddress)
-	cmdErr := exec.Command("/root/pftester/acct.pl", cliArgs...).Run()
+	cmdErr := exec.Command(acct_cmd, cliArgs...).Run()
 	return cmdErr
 }
 
@@ -259,10 +268,10 @@ func _dhcp(user user, cliArgs []string) error {
 	cliArgs = append(cliArgs, "--mac="+user.MacAddress)
 	cliArgs = append(cliArgs, "--ip="+user.IpAddress)
 	cliArgs = append(cliArgs, "--hostname=test-hostname")
-	cliArgs = append(cliArgs, "--dhcp-fingerprint=1,2,3,4")
-	cliArgs = append(cliArgs, "--dhcp-vendor=test")
+	cliArgs = append(cliArgs, "--dhcp-fingerprint="+user.DhcpFingerprint)
+	cliArgs = append(cliArgs, "--dhcp-vendor="+user.DhcpVendor)
 
-	cmdErr := exec.Command("/root/pftester/send_dhcp.pl", cliArgs...).Run()
+	cmdErr := exec.Command(dhcp_cmd, cliArgs...).Run()
 
 	return cmdErr
 }
@@ -272,7 +281,7 @@ func _eapol_test(user user, cliArgs []string) error {
 
 	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
 
-	cmdErr := exec.Command(cmd, cliArgs...).Run()
+	cmdErr := exec.Command(eapol_cmd, cliArgs...).Run()
 
 	return cmdErr
 }
