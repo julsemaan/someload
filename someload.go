@@ -211,7 +211,7 @@ func execute_job(sem chan int) {
 	before := time.Now()
 	var cmdErr error
 	switch Config.job_type {
-	case "eapol_test":
+	case "radius_eap":
 		cmdErr = _eapol_test(user, cliArgs)
 	case "dhcp":
 		cmdErr = _dhcp(user, cliArgs)
