@@ -66,9 +66,9 @@ var (
 
 const (
 	eapol_cmd  string = "eapol_test"
-	acct_cmd   string = "/root/pftester/acct.pl"
-	dhcp_cmd   string = "/root/pftester/send_dhcp.pl"
-	http_cmd   string = "/usr/bin/curl"
+	acct_cmd   string = "acct_test"
+	dhcp_cmd   string = "dhcp_test"
+	http_cmd   string = "curl"
 	confSuffix        = ".rl_conf" // appended to all configfiles created
 )
 
