@@ -14,7 +14,7 @@ Switch to the directory that contains the code
 
 `# go install someload.go`
 
-Example usage : 
+## Example usage : 
 
 ```
 # someload --help
@@ -22,3 +22,10 @@ Example usage :
 # someload -t 30 -l /dev/shm/xload.log -m 10 -x /root/mock_data.csv -type acct -w 5 -- --server=172.20.20.109 --secret=radius
 # someload -t 30 -l /dev/shm/xload.log -m 10 -x /root/mock_data.csv -type dhcp -w 5
 ```
+
+## External scripts used by type (must be in the path)
+
+* radius_eap : eapol_test
+* dhcp : dhcp_test
+* acct : acct_test
+* http : curl
