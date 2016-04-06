@@ -130,7 +130,7 @@ func main() {
 				key_mgmt=WPA-EAP
 				eap=PEAP
 				identity="{{.Identity}}"
-				anonymous_identity="anonymous"
+				anonymous_identity="{{.Identity}}"
 				password="{{.Password}}"
 				phase2="autheap=MSCHAPV2"
 
@@ -253,6 +253,8 @@ func execute_job(sem chan int) {
 }
 
 func _http(user user, cliArgs []string) error {
+	// we add forwarded for to make the server believe we are another IP
+	cliArgs = append(cliArgs, "-HX-Forwarded-For: "+user.IpAddress)
 	cmdErr := exec.Command(http_cmd, cliArgs...).Run()
 	return cmdErr
 }
