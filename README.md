@@ -12,16 +12,21 @@ Then from your go path
 
 Switch to the directory that contains the code
 
-`# go install someload.go`
+```
+# go get ../.
+# go install someload.go
+```
 
 ## Example usage : 
 
 ```
 # someload --help
-# someload -t 30 -l /dev/shm/xload.log -m 10 -x /root/mock_data.csv -type http -w 4 -- 172.20.20.109/captive-portal
-# someload -t 30 -l /dev/shm/xload.log -m 10 -x /root/mock_data.csv -type acct -w 5 -- --server=172.20.20.109 --secret=radius
-# someload -t 30 -l /dev/shm/xload.log -m 10 -x /root/mock_data.csv -type dhcp -w 5
+# someload -t 300 -l /dev/shm/radload.log -x mock_data.csv -type radius_eap -w 15 -- -a 10.0.0.100 -s radius -N30:s:02:02:00:00:00:02:example -N4:x:ac150284 -N87:s:10003
+# someload -t 300 -l /dev/shm/xload.log -x mock_data.csv -type http -w 8 -- https://10.0.0.100/captive-portal --insecure
+# someload -t 300 -l /dev/shm/radload.log -x mock_data.csv -type acct -w 15 -- --server=10.0.0.100 --secret=radius --nas-ip-address=172.21.2.132
+# someload -t 300 -l /dev/shm/xload.log -x mock_data.csv -type dhcp -w 1 -- --server=10.0.0.100
 ```
+Arguments after `--` are passed to the script that is called.
 
 ## External scripts used by type (must be in the path)
 
