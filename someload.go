@@ -323,13 +323,14 @@ func printStats() {
 
 	fmt.Printf("============= Statistics =======================\n")
 	fmt.Printf("\n")
-	fmt.Printf("Total running time: %v \n", time.Now().Sub(reqstats.start_time))
-	fmt.Printf("Total requests handled: %v \n", reqstats.requests)
-	fmt.Printf("Successful authentications : %v \n", reqstats.success)
-	fmt.Printf("Failed authentications : %v \n", reqstats.failures)
-	fmt.Printf("Longuest authentication: %v s\n", max)
-	fmt.Printf("Shortest authentication: %v s\n", min)
-	fmt.Printf("Median authentication time: %v s\n", median)
+	fmt.Printf("%s Total running time: %v \n", Config.job_type, time.Now().Sub(reqstats.start_time))
+	fmt.Printf("%s Total requests handled: %v \n", Config.job_type, reqstats.requests)
+	fmt.Printf("%s Successful authentications : %v \n", Config.job_type, reqstats.success)
+	fmt.Printf("%s Failed authentications : %v \n", Config.job_type, reqstats.failures)
+	fmt.Printf("%s Longuest authentication: %v s\n", Config.job_type, max)
+	fmt.Printf("%s Shortest authentication: %v s\n", Config.job_type, min)
+	fmt.Printf("%s Median authentication time: %v s\n", Config.job_type, median)
+	fmt.Printf("Type: %s Total: %v Failures: %v Median: %v", Config.job_type, reqstats.requests, reqstats.failures, median)
 }
 
 func cleanUp() {
