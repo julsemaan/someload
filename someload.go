@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/template"
 	"time"
@@ -29,6 +30,7 @@ type (
 	confTmp struct {
 		peap string
 		tls  string
+		mab  string
 	}
 
 	rl_stats struct {
@@ -65,11 +67,12 @@ var (
 )
 
 const (
-	eapol_cmd  string = "eapol_test"
-	acct_cmd   string = "acct_test"
-	dhcp_cmd   string = "dhcp_test"
-	http_cmd   string = "curl"
-	confSuffix        = ".rl_conf" // appended to all configfiles created
+	eapol_cmd      string = "eapol_test"
+	acct_cmd       string = "acct_test"
+	dhcp_cmd       string = "dhcp_test"
+	http_cmd       string = "curl"
+	radius_mab_cmd string = "radclient"
+	confSuffix            = ".rl_conf" // appended to all configfiles created
 )
 
 func main() {
@@ -151,6 +154,11 @@ func main() {
 			  private_key="/etc/certs/key.pem"
 			  private_key_passwd="{{.Password}}"
    		}`,
+		mab: `User-Name = "{{.MacAddress}}"
+User-Password = "{{.MacAddress}}"
+Calling-Station-Id = "{{.MacAddress}}"
+NAS-Port = 1
+Message-Authenticator = 0x00000000000000000000000000000000`,
 	}
 
 	// read usernames/passwords from csv and generate conf files
@@ -168,7 +176,8 @@ func main() {
 	err = os.Chdir(Config.dir)
 	check(err)
 
-	tmpl, err := template.New("eapconfig").Parse(confTemplate.peap)
+	tmpl_peap, err := template.New("eapconfig").Parse(confTemplate.peap)
+	tmpl_mab, err := template.New("eapconfig").Parse(confTemplate.mab)
 	if err != nil {
 		check(err)
 	}
@@ -185,7 +194,15 @@ func main() {
 
 		f, err := os.Create(nextUser.Identity + confSuffix)
 		check(err)
-		err = tmpl.Execute(f, nextUser)
+		err = tmpl_peap.Execute(f, nextUser)
+		if err != nil {
+			panic(err)
+		}
+		f.Close()
+
+		f, err = os.Create(_os_safe_mac(nextUser.MacAddress) + confSuffix)
+		check(err)
+		err = tmpl_mab.Execute(f, nextUser)
 		if err != nil {
 			panic(err)
 		}
@@ -213,6 +230,8 @@ func execute_job(sem chan int) {
 	switch Config.job_type {
 	case "radius_eap":
 		cmdErr = _eapol_test(user, cliArgs)
+	case "radius_mab":
+		cmdErr = _radius_mab(user, cliArgs)
 	case "dhcp":
 		cmdErr = _dhcp(user, cliArgs)
 	case "acct":
@@ -252,6 +271,16 @@ func execute_job(sem chan int) {
 	<-sem // clear the semaphore
 }
 
+func _os_safe_mac(mac string) string {
+	return strings.Replace(mac, ":", "", -1)
+}
+
+func _radius_mab(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "-f"+_os_safe_mac(user.MacAddress)+confSuffix)
+	cmdErr := exec.Command(radius_mab_cmd, cliArgs...).Run()
+	return cmdErr
+}
+
 func _http(user user, cliArgs []string) error {
 	// we add forwarded for to make the server believe we are another IP
 	cliArgs = append(cliArgs, "-HX-Forwarded-For: "+user.IpAddress)
@@ -279,7 +308,7 @@ func _dhcp(user user, cliArgs []string) error {
 }
 
 func _eapol_test(user user, cliArgs []string) error {
-	cliArgs = append(cliArgs, "-c"+user.Identity+".rl_conf")
+	cliArgs = append(cliArgs, "-c"+user.Identity+confSuffix)
 
 	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
 
@@ -337,6 +366,7 @@ func cleanUp() {
 	if Config.clean {
 		for _, user := range users {
 			os.Remove(Config.dir + "/" + user.Identity + confSuffix)
+			os.Remove(Config.dir + "/" + user.MacAddress + confSuffix)
 		}
 	}
 }
@@ -346,7 +376,7 @@ func setConfig() {
 	confPtr := flag.String("f", "~/.radload.conf", "path to configuration file")
 	workersPtr := flag.Int("w", 1, "number of workers to run concurrently (defaults to 1)")
 	csvPtr := flag.String("x", "radload.csv", "path to csv file from which username and password will be read")
-	dirPtr := flag.String("d", "/tmp/.radload", "path to directory where to store the temporary configuration files")
+	dirPtr := flag.String("d", "/tmp/radload", "path to directory where to store the temporary configuration files")
 	logPtr := flag.String("l", "radload.log", "path to log file")
 	macsPtr := flag.Int("m", 10000, "generate a list of 'm' random MAC addresses and use them as Calling-Station-Id values (defaults to 10000)")
 	countPtr := flag.Uint64("r", 0, "run a maximum of 'r' requests before exiting (defaults to infinity)")
