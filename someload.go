@@ -72,6 +72,7 @@ const (
 	dhcp_cmd       string = "dhcp_test"
 	http_cmd       string = "curl"
 	radius_mab_cmd string = "radclient"
+	ntlm_auth_cmd  string = "ntlm_auth"
 	confSuffix            = ".rl_conf" // appended to all configfiles created
 )
 
@@ -238,6 +239,8 @@ func execute_job(sem chan int) {
 		cmdErr = _acct(user, cliArgs)
 	case "http":
 		cmdErr = _http(user, cliArgs)
+	case "ntlm_auth":
+		cmdErr = _ntlm_auth(user, cliArgs)
 	default:
 		panic("Don't know that type...")
 	}
@@ -285,6 +288,16 @@ func _http(user user, cliArgs []string) error {
 	// we add forwarded for to make the server believe we are another IP
 	cliArgs = append(cliArgs, "-HX-Forwarded-For: "+user.IpAddress)
 	cmdErr := exec.Command(http_cmd, cliArgs...).Run()
+	return cmdErr
+}
+
+func _ntlm_auth(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "--username="+user.Identity)
+	cliArgs = append(cliArgs, "--password="+user.Password)
+	output, cmdErr := exec.Command(ntlm_auth_cmd, cliArgs...).Output()
+	if cmdErr != nil {
+		fmt.Print(string(output[:]))
+	}
 	return cmdErr
 }
 
