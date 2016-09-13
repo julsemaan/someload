@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"text/template"
@@ -30,6 +31,7 @@ type (
 	confTmp struct {
 		peap string
 		tls  string
+		fast string
 		mab  string
 	}
 
@@ -160,6 +162,16 @@ User-Password = "{{.MacAddress}}"
 Calling-Station-Id = "{{.MacAddress}}"
 NAS-Port = 1
 Message-Authenticator = 0x00000000000000000000000000000000`,
+		fast: `
+			network={
+				eap=FAST
+				pac_file="/tmp/tmp-{{.Identity}}.pac"
+				phase1="fast_provisioning=2"
+				#anonymous_identity="anonymous"
+				phase2="autheap=MSCHAPV2"
+				identity="{{.Identity}}"
+				password="{{.Password}}"
+			}`,
 	}
 
 	// read usernames/passwords from csv and generate conf files
@@ -178,10 +190,16 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 	check(err)
 
 	tmpl_peap, err := template.New("eapconfig").Parse(confTemplate.peap)
+	check(err)
+
 	tmpl_mab, err := template.New("eapconfig").Parse(confTemplate.mab)
-	if err != nil {
-		check(err)
-	}
+	check(err)
+
+	tmpl_fast, err := template.New("eapconfig").Parse(confTemplate.fast)
+	check(err)
+
+	tmpl_tls, err := template.New("eapconfig").Parse(confTemplate.tls)
+	check(err)
 
 	for _, record := range records {
 		nextUser := user{record[0], record[1], record[2], record[3], record[4], record[5]}
@@ -193,20 +211,33 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 		}
 		users = append(users, nextUser)
 
+		//args := struct {
+		//	Config rl_config
+		//	User   user
+		//}{Config, nextUser}
+
 		f, err := os.Create(nextUser.Identity + confSuffix)
 		check(err)
 		err = tmpl_peap.Execute(f, nextUser)
-		if err != nil {
-			panic(err)
-		}
+		check(err)
 		f.Close()
 
 		f, err = os.Create(_os_safe_mac(nextUser.MacAddress) + confSuffix)
 		check(err)
 		err = tmpl_mab.Execute(f, nextUser)
-		if err != nil {
-			panic(err)
-		}
+		check(err)
+		f.Close()
+
+		f, err = os.Create(nextUser.Identity + "-fast-" + confSuffix)
+		check(err)
+		err = tmpl_fast.Execute(f, nextUser)
+		check(err)
+		f.Close()
+
+		f, err = os.Create(nextUser.Identity + "-tls-" + confSuffix)
+		check(err)
+		err = tmpl_tls.Execute(f, nextUser)
+		check(err)
 		f.Close()
 	}
 
@@ -216,8 +247,7 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 
 		if (Config.maxreq != 0) && (reqstats.requests >= Config.maxreq) {
 			fmt.Fprintf(os.Stderr, "Maximum requests reached. Exiting.\n")
-			printStats()
-			os.Exit(0)
+			atExit(0)
 		}
 		go execute_job(sem)
 	}
@@ -231,6 +261,10 @@ func execute_job(sem chan int) {
 	switch Config.job_type {
 	case "radius_eap":
 		cmdErr = _eapol_test(user, cliArgs)
+	case "radius_eap_fast":
+		cmdErr = _radius_eap_fast(user, cliArgs)
+	case "radius_eap_tls":
+		cmdErr = _radius_eap_tls(user, cliArgs)
 	case "radius_mab":
 		cmdErr = _radius_mab(user, cliArgs)
 	case "dhcp":
@@ -280,31 +314,28 @@ func _os_safe_mac(mac string) string {
 
 func _radius_mab(user user, cliArgs []string) error {
 	cliArgs = append(cliArgs, "-f"+_os_safe_mac(user.MacAddress)+confSuffix)
-	cmdErr := exec.Command(radius_mab_cmd, cliArgs...).Run()
+	cmdErr := _run(radius_mab_cmd, cliArgs)
 	return cmdErr
 }
 
 func _http(user user, cliArgs []string) error {
 	// we add forwarded for to make the server believe we are another IP
 	cliArgs = append(cliArgs, "-HX-Forwarded-For: "+user.IpAddress)
-	cmdErr := exec.Command(http_cmd, cliArgs...).Run()
+	cmdErr := _run(http_cmd, cliArgs)
 	return cmdErr
 }
 
 func _ntlm_auth(user user, cliArgs []string) error {
 	cliArgs = append(cliArgs, "--username="+user.Identity)
 	cliArgs = append(cliArgs, "--password="+user.Password)
-	output, cmdErr := exec.Command(ntlm_auth_cmd, cliArgs...).Output()
-	if cmdErr != nil {
-		fmt.Print(string(output[:]))
-	}
+	cmdErr := _run(ntlm_auth_cmd, cliArgs)
 	return cmdErr
 }
 
 func _acct(user user, cliArgs []string) error {
 	//	/root/pftester/acct.pl --secret=radius --server=172.20.20.109 --mac=00:11:22:33:44:55
 	cliArgs = append(cliArgs, "--mac="+user.MacAddress)
-	cmdErr := exec.Command(acct_cmd, cliArgs...).Run()
+	cmdErr := _run(acct_cmd, cliArgs)
 	return cmdErr
 }
 
@@ -315,7 +346,7 @@ func _dhcp(user user, cliArgs []string) error {
 	cliArgs = append(cliArgs, "--dhcp-fingerprint="+user.DhcpFingerprint)
 	cliArgs = append(cliArgs, "--dhcp-vendor="+user.DhcpVendor)
 
-	cmdErr := exec.Command(dhcp_cmd, cliArgs...).Run()
+	cmdErr := _run(dhcp_cmd, cliArgs)
 
 	return cmdErr
 }
@@ -325,8 +356,36 @@ func _eapol_test(user user, cliArgs []string) error {
 
 	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
 
-	cmdErr := exec.Command(eapol_cmd, cliArgs...).Run()
+	cmdErr := _run(eapol_cmd, cliArgs)
 
+	return cmdErr
+}
+
+func _radius_eap_fast(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "-c"+user.Identity+"-fast-"+confSuffix)
+
+	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
+
+	cmdErr := _run(eapol_cmd, cliArgs)
+
+	return cmdErr
+}
+
+func _radius_eap_tls(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "-c"+user.Identity+"-tls-"+confSuffix)
+
+	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
+
+	cmdErr := _run(eapol_cmd, cliArgs)
+
+	return cmdErr
+}
+
+func _run(command string, cliArgs []string) error {
+	output, cmdErr := exec.Command(command, cliArgs...).Output()
+	if cmdErr != nil {
+		fmt.Print(string(output[:]))
+	}
 	return cmdErr
 }
 
@@ -377,9 +436,14 @@ func printStats() {
 
 func cleanUp() {
 	if Config.clean {
-		for _, user := range users {
-			os.Remove(Config.dir + "/" + user.Identity + confSuffix)
-			os.Remove(Config.dir + "/" + user.MacAddress + confSuffix)
+		d, err := os.Open(Config.dir)
+		check(err)
+		defer d.Close()
+		names, err := d.Readdirnames(-1)
+		check(err)
+		for _, name := range names {
+			err = os.RemoveAll(filepath.Join(Config.dir, name))
+			check(err)
 		}
 	}
 }
