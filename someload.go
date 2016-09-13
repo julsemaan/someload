@@ -45,16 +45,19 @@ type (
 	}
 
 	rl_config struct {
-		workers  uint64
-		csv      string
-		dir      string
-		log      string
-		MACs     uint64
-		maxreq   uint64
-		maxtime  uint64
-		clean    bool
-		conf     string
-		job_type string
+		workers          uint64
+		csv              string
+		dir              string
+		log              string
+		MACs             uint64
+		maxreq           uint64
+		maxtime          uint64
+		clean            bool
+		conf             string
+		job_type         string
+		Tls_cert_path    string
+		Tls_ca_cert_path string
+		Tls_key_path     string
 	}
 )
 
@@ -135,9 +138,9 @@ func main() {
 				ssid="EXAMPLE-SSID"
 				key_mgmt=WPA-EAP
 				eap=PEAP
-				identity="{{.Identity}}"
-				anonymous_identity="{{.Identity}}"
-				password="{{.Password}}"
+				identity="{{.User.Identity}}"
+				anonymous_identity="{{.User.Identity}}"
+				password="{{.User.Password}}"
 				phase2="autheap=MSCHAPV2"
 
 				#  Uncomment the following to perform server certificate validation.
@@ -151,26 +154,26 @@ func main() {
 			  pairwise=CCMP TKIP
 			  group=CCMP TKIP
 			  eap=TLS
-			  identity="{{.Identity}}"
-			  ca_cert="/etc/certs/cacert.pem"
-			  client_cert="/etc/certs/cert.pem"
-			  private_key="/etc/certs/key.pem"
-			  private_key_passwd="{{.Password}}"
+			  identity="{{.User.Identity}}"
+			  ca_cert="{{.Config.Tls_ca_cert_path}}"
+			  client_cert="{{.Config.Tls_cert_path}}"
+			  private_key="{{.Config.Tls_key_path}}"
+				#private_key_passwd="{{.User.Password}}"
    		}`,
-		mab: `User-Name = "{{.MacAddress}}"
-User-Password = "{{.MacAddress}}"
-Calling-Station-Id = "{{.MacAddress}}"
+		mab: `User-Name = "{{.User.MacAddress}}"
+User-Password = "{{.User.MacAddress}}"
+Calling-Station-Id = "{{.User.MacAddress}}"
 NAS-Port = 1
 Message-Authenticator = 0x00000000000000000000000000000000`,
 		fast: `
 			network={
 				eap=FAST
-				pac_file="/tmp/tmp-{{.Identity}}.pac"
+				pac_file="/tmp/tmp-{{.User.Identity}}.pac"
 				phase1="fast_provisioning=2"
 				#anonymous_identity="anonymous"
 				phase2="autheap=MSCHAPV2"
-				identity="{{.Identity}}"
-				password="{{.Password}}"
+				identity="{{.User.Identity}}"
+				password="{{.User.Password}}"
 			}`,
 	}
 
@@ -211,32 +214,32 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 		}
 		users = append(users, nextUser)
 
-		//args := struct {
-		//	Config rl_config
-		//	User   user
-		//}{Config, nextUser}
+		args := struct {
+			Config rl_config
+			User   user
+		}{Config, nextUser}
 
 		f, err := os.Create(nextUser.Identity + confSuffix)
 		check(err)
-		err = tmpl_peap.Execute(f, nextUser)
+		err = tmpl_peap.Execute(f, args)
 		check(err)
 		f.Close()
 
 		f, err = os.Create(_os_safe_mac(nextUser.MacAddress) + confSuffix)
 		check(err)
-		err = tmpl_mab.Execute(f, nextUser)
+		err = tmpl_mab.Execute(f, args)
 		check(err)
 		f.Close()
 
 		f, err = os.Create(nextUser.Identity + "-fast-" + confSuffix)
 		check(err)
-		err = tmpl_fast.Execute(f, nextUser)
+		err = tmpl_fast.Execute(f, args)
 		check(err)
 		f.Close()
 
 		f, err = os.Create(nextUser.Identity + "-tls-" + confSuffix)
 		check(err)
-		err = tmpl_tls.Execute(f, nextUser)
+		err = tmpl_tls.Execute(f, args)
 		check(err)
 		f.Close()
 	}
@@ -460,6 +463,9 @@ func setConfig() {
 	timePtr := flag.Int("t", 0, "run for a maximum of 't' seconds before exiting (defaults to infinity)")
 	cleanPtr := flag.Bool("c", false, "Cleanup. Deletes all configuration files at exit.")
 	jobTypePtr := flag.String("type", "eapol_test", "Sets the type of the job")
+	tlsCertPathPtr := flag.String("tls-cert-path", "/tmp/tls.crt", "The path to the client certificate to be used with TLS connections (EAP-TLS)")
+	tlsCaCertPathPtr := flag.String("tls-ca-cert-path", "/tmp/tls.ca.crt", "The path to the CA certificate to be used with TLS connections (EAP-TLS)")
+	tlsKeyPathPtr := flag.String("tls-key-path", "/tmp/tls.key", "The path to the client key to be used with TLS connections (EAP-TLS)")
 	flag.Parse()
 	cliArgs = flag.Args()
 
@@ -478,5 +484,8 @@ func setConfig() {
 	Config.maxtime = uint64(*timePtr)
 	Config.clean = *cleanPtr
 	Config.job_type = *jobTypePtr
+	Config.Tls_cert_path = *tlsCertPathPtr
+	Config.Tls_ca_cert_path = *tlsCaCertPathPtr
+	Config.Tls_key_path = *tlsKeyPathPtr
 
 }
