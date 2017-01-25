@@ -219,29 +219,37 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 			User   user
 		}{Config, nextUser}
 
-		f, err := os.Create(nextUser.Identity + confSuffix)
-		check(err)
-		err = tmpl_peap.Execute(f, args)
-		check(err)
-		f.Close()
+		if _, err := os.Stat(nextUser.Identity + confSuffix); os.IsNotExist(err) {
+			f, err := os.Create(nextUser.Identity + confSuffix)
+			check(err)
+			err = tmpl_peap.Execute(f, args)
+			check(err)
+			f.Close()
+		}
 
-		f, err = os.Create(_os_safe_mac(nextUser.MacAddress) + confSuffix)
-		check(err)
-		err = tmpl_mab.Execute(f, args)
-		check(err)
-		f.Close()
+		if _, err := os.Stat(_os_safe_mac(nextUser.MacAddress) + confSuffix); os.IsNotExist(err) {
+			f, err := os.Create(_os_safe_mac(nextUser.MacAddress) + confSuffix)
+			check(err)
+			err = tmpl_mab.Execute(f, args)
+			check(err)
+			f.Close()
+		}
 
-		f, err = os.Create(nextUser.Identity + "-fast-" + confSuffix)
-		check(err)
-		err = tmpl_fast.Execute(f, args)
-		check(err)
-		f.Close()
+		if _, err := os.Stat(nextUser.Identity + "-fast-" + confSuffix); os.IsNotExist(err) {
+			f, err := os.Create(nextUser.Identity + "-fast-" + confSuffix)
+			check(err)
+			err = tmpl_fast.Execute(f, args)
+			check(err)
+			f.Close()
+		}
 
-		f, err = os.Create(nextUser.Identity + "-tls-" + confSuffix)
-		check(err)
-		err = tmpl_tls.Execute(f, args)
-		check(err)
-		f.Close()
+		if _, err := os.Stat(nextUser.Identity + "-tls-" + confSuffix); os.IsNotExist(err) {
+			f, err := os.Create(nextUser.Identity + "-tls-" + confSuffix)
+			check(err)
+			err = tmpl_tls.Execute(f, args)
+			check(err)
+			f.Close()
+		}
 	}
 
 	var sem = make(chan int, Config.workers)
