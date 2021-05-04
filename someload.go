@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"github.com/montanaflynn/stats"
 	"io"
 	mrand "math/rand"
 	"os"
@@ -16,6 +15,8 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	"github.com/montanaflynn/stats"
 )
 
 type (
@@ -29,10 +30,11 @@ type (
 	}
 
 	confTmp struct {
-		peap string
-		tls  string
-		fast string
-		mab  string
+		peap     string
+		tls      string
+		ttls_pap string
+		fast     string
+		mab      string
 	}
 
 	rl_stats struct {
@@ -146,6 +148,15 @@ func main() {
 				#  Uncomment the following to perform server certificate validation.
 				#	ca_cert="/root/ca.crt"
 		}`,
+		ttls_pap: `
+			network={
+					key_mgmt=IEEE8021X
+					eap=TTLS
+					anonymous_identity="{{.User.Identity}}"
+					identity="{{.User.Identity}}"
+					password="{{.User.Password}}"
+					phase2="auth=PAP"
+		}`,
 		tls: `
 		  network={
 			  ssid="YOUR-SSID"
@@ -183,6 +194,8 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 	r := csv.NewReader(io.Reader(file))
 	r.Comma = '|'
 	records, err := r.ReadAll()
+	// skip the header
+	records = records[1:]
 	check(err)
 	file.Close()
 
@@ -202,6 +215,9 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 	check(err)
 
 	tmpl_tls, err := template.New("eapconfig").Parse(confTemplate.tls)
+	check(err)
+
+	tmpl_ttls_pap, err := template.New("eapconfig").Parse(confTemplate.ttls_pap)
 	check(err)
 
 	for _, record := range records {
@@ -250,6 +266,14 @@ Message-Authenticator = 0x00000000000000000000000000000000`,
 			check(err)
 			f.Close()
 		}
+
+		if _, err := os.Stat(nextUser.Identity + "-ttls_pap-" + confSuffix); os.IsNotExist(err) {
+			f, err := os.Create(nextUser.Identity + "-ttls_pap-" + confSuffix)
+			check(err)
+			err = tmpl_ttls_pap.Execute(f, args)
+			check(err)
+			f.Close()
+		}
 	}
 
 	var sem = make(chan int, Config.workers)
@@ -276,6 +300,8 @@ func execute_job(sem chan int) {
 		cmdErr = _radius_eap_fast(user, cliArgs)
 	case "radius_eap_tls":
 		cmdErr = _radius_eap_tls(user, cliArgs)
+	case "radius_eap_ttls_pap":
+		cmdErr = _radius_eap_ttls_pap(user, cliArgs)
 	case "radius_mab":
 		cmdErr = _radius_mab(user, cliArgs)
 	case "dhcp":
@@ -384,6 +410,16 @@ func _radius_eap_fast(user user, cliArgs []string) error {
 
 func _radius_eap_tls(user user, cliArgs []string) error {
 	cliArgs = append(cliArgs, "-c"+user.Identity+"-tls-"+confSuffix)
+
+	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
+
+	cmdErr := _run(eapol_cmd, cliArgs)
+
+	return cmdErr
+}
+
+func _radius_eap_ttls_pap(user user, cliArgs []string) error {
+	cliArgs = append(cliArgs, "-c"+user.Identity+"-ttls_pap-"+confSuffix)
 
 	cliArgs = append(cliArgs, fmt.Sprintf("-M%v", user.MacAddress))
 
