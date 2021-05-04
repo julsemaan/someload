@@ -468,6 +468,8 @@ func printStats() {
 	min, _ := stats.Min(reqstats.times)
 	median, _ := stats.Median(reqstats.times)
 	mean, _ := stats.Mean(reqstats.times)
+	perc95, _ := stats.Percentile(reqstats.times, 95)
+	perc99, _ := stats.Percentile(reqstats.times, 99)
 	_ = "breakpoint"
 
 	fmt.Printf("============= Statistics =======================\n")
@@ -480,6 +482,8 @@ func printStats() {
 	fmt.Printf("%s Shortest authentication: %v s\n", Config.job_type, min)
 	fmt.Printf("%s Median authentication time: %v s\n", Config.job_type, median)
 	fmt.Printf("%s Mean authentication time: %v s\n", Config.job_type, mean)
+	fmt.Printf("%s 95th percentile authentication time: %v s\n", Config.job_type, perc95)
+	fmt.Printf("%s 99th percentile authentication time: %v s\n", Config.job_type, perc99)
 	fmt.Printf("Type: %s Total: %v Failures: %v Median: %v", Config.job_type, reqstats.requests, reqstats.failures, median)
 }
 
